@@ -98,6 +98,11 @@ namespace AutoBLv2.SRV
                     }
                     break;
 
+                default:
+                    err = true;
+                    _res = "UNKNOWN_COMMAND";
+                    break;
+
             }
 
             if (err)
