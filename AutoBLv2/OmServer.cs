@@ -26,6 +26,10 @@ namespace AutoBLv2
         #endregion
 
 
+        public bool DisableLogger { get; set; }
+
+
+
         #region Delegates
         //-----------------------------------------------------------
         public delegate Int32 ServerCallback(object _sender, UInt64 _id, ref string _req, ref string _res);
@@ -38,6 +42,7 @@ namespace AutoBLv2
         {
 
             __logger = _logger;
+            this.DisableLogger = true;
 
             __clients = new List<ClientObj>();
             __serverCallback = _serverCallback;
@@ -126,7 +131,8 @@ namespace AutoBLv2
                         break;
 
                     EchoReq(req, ref omClient);
-                    __logger.DbLog(ref req);
+                    if(!this.DisableLogger)
+                        __logger.DbLog(ref req);
 
 
                     //#########################################
@@ -143,12 +149,12 @@ namespace AutoBLv2
                     }
                     //#########################################
 
-                    //writer.WriteLine(res + "\r\n");
                     writer.WriteLine(res);
                     writer.Flush();
 
                     EchoRes(res, ref omClient);
-                    __logger.DbLog(ref req, ref res);
+                    if (!this.DisableLogger)
+                        __logger.DbLog(ref req, ref res);
 
                 }
                 catch (Exception ex)

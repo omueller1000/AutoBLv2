@@ -1,8 +1,11 @@
-﻿using System;
+﻿using AutoBLv2.SRV;
+using FPGA;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static MongoDB.Driver.WriteConcern;
 
 namespace AutoBLv2
 {
@@ -46,7 +49,9 @@ namespace AutoBLv2
         private const Int32 REQ_MIN_LEN = 1;
         private const Int32 OFFSET_KEYWORD = 0;
         private const Int32 OFFSET_SERVER_COMMAND = 1;
-        //-----------------------------------------------------------               
+        //-----------------------------------------------------------
+        private string BL_DEF_PATH = "C:\\SSRL_LOCAL_OM\\definitions\\bl.def";
+        //-----------------------------------------------------------
         #endregion
 
 
@@ -56,6 +61,10 @@ namespace AutoBLv2
         private static ServerLock __lock;
         private OmServer __server;
         private string __dbLogName = "LOGS";
+        private FpgaDaq __fpgaDaq;
+        private string __fpgaDaqName = "FPGA";
+        //-----------------------------------------------------------
+        private BlSrv __blSrv;
         //-----------------------------------------------------------
         #endregion
 
@@ -74,14 +83,30 @@ namespace AutoBLv2
         {
             Int32 rt;
             string error = "";
+            string value;
             __lock = new ServerLock();
 
+
+
+            rt = Def.Def.ReadDefinition(BL_DEF_PATH, "FPGA_NAME", out value, ref error);
+            __fpgaDaqName = value;
+            __fpgaDaq = new FpgaDaq(__fpgaDaqName);
+
+
+
+            #region Beamline Server
+            //.................................................
+            __blSrv = new BlSrv(ref __fpgaDaq, ref __lock);
+            Console.WriteLine("BlSrv");
+            //.................................................
+            #endregion
 
 
 
             // -- START THE SERVER --
             Utils.DbLogging dbLogging = new Utils.DbLogging("mongodb://xasdb1.slac.stanford.edu:27017", __dbLogName);
             __server = new OmServer(_port, (OmServer.ServerCallback)EvaluateRequest, ref dbLogging);
+            __server.DisableLogger = true;
         }
         //===========================================================        
 
@@ -111,6 +136,20 @@ namespace AutoBLv2
                     //...........................................................
                     case "SERVER":
                         rt = EvaluateServerRequest(ref _sender, _id, ref reqArr, ref _res);
+                        if (rt < 0)
+                        {
+                            err = true;
+                            break;
+                        }
+                        break;
+                    //...........................................................
+                    #endregion
+
+
+                    #region SERVER
+                    //...........................................................
+                    case "BL":
+                        rt = __blSrv.EvaluateRequest(ref reqArr, ref _res);
                         if (rt < 0)
                         {
                             err = true;
