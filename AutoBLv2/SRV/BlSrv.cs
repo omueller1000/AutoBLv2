@@ -1,9 +1,9 @@
 ﻿using System;
-using System.Collections.Generic;
+//using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-
+using Automation;
 using Devices;
 using FPGA;
 
@@ -72,6 +72,111 @@ namespace AutoBLv2.SRV
             _res = "\r" + task;
             return SUCCESS;
         }
+
+
+
+
+
+        private Int32 REQUEST_LENGTH_AUTO_GAIN_MIN = 3;
+        private Int32 REQUEST_LENGTH_AUTO_GAIN_MAX = 8;
+        private Int32 OFFSET_AUTO_GAIN_EXECUTE = 2;
+
+        private Int32 MAX_AMPLIFIER_INDEX = 4;  // beamline specific
+        private Int32 MIN_MONO_ENERGY = 5000;
+        private Int32 MAX_MONO_ENERGY = 40000;
+
+
+        private Int32 CmdAutoGain(ref string[] _reqArr, ref string _res, ref string _error)
+        {
+            Int32 rt;
+            bool validateOnly = true;
+            List<double> energyList;
+            List<Int32> ampliferIndexList;
+            SRS570[] selectedAmplifiers;
+
+
+
+
+            if (_reqArr.Length < REQUEST_LENGTH_AUTO_GAIN_MIN || _reqArr.Length > REQUEST_LENGTH_AUTO_GAIN_MAX)
+            {
+                _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name;
+                _error += " INVALID_NUMBER_OF_ARGUMENTS";
+                return ERROR;
+            }
+
+
+            
+            ampliferIndexList = new List<Int32>();
+            energyList = new List<double>();
+
+            // parse aguments
+            try
+            {
+                validateOnly = Int32.Parse(_reqArr[OFFSET_AUTO_GAIN_EXECUTE]) == 0 ? true : false;
+
+                for (Int32 i = OFFSET_AUTO_GAIN_EXECUTE + 1; i < _reqArr.Length; i++)
+                {
+                    if (_reqArr[i][0] == 'A')
+                    {
+                        ampliferIndexList.Add(Int32.Parse(_reqArr[i].Substring(1)));
+                    }
+                    else if (_reqArr[i][0] == 'E')
+                    {
+                        energyList.Add(double.Parse(_reqArr[i].Substring(1)));
+                    }
+                    else
+                    {
+                        _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name;
+                        _error += " INVALID_ARGUMENT";
+                        return ERROR;
+                    }
+                }
+
+
+            }
+            catch (Exception ex)
+            {
+                _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.Message;
+                return ERROR;
+            }
+
+
+            // verify arguments
+            try
+            {
+                for (Int32 i = 0; i < ampliferIndexList.Count; i++)
+                {
+                    if (ampliferIndexList[i] < 0 || ampliferIndexList[i] > MAX_AMPLIFIER_INDEX)
+                    {
+                        _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name;
+                        _error += " ARGUMENT_OUT_OF_RANGE";
+                        return ERROR;
+                    }
+                }
+
+                for (Int32 i = 0; i < energyList.Count; i++)
+                {
+                    if (energyList[i] < MIN_MONO_ENERGY || energyList[i] > MAX_MONO_ENERGY)
+                    {
+                        _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name;
+                        _error += " ARGUMENT_OUT_OF_RANGE";
+                        return ERROR;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.Message;
+                return ERROR;
+            }
+
+
+            if (validateOnly)
+                return SUCCESS;
+
+
+            return SUCCESS;
+        }
         //-----------------------------------------------------------
         #endregion
 
@@ -97,6 +202,27 @@ namespace AutoBLv2.SRV
                         break;
                     }
                     break;
+
+
+
+                case "AUTO_GAIN":
+                    if (__serverLock.IsLocked)
+                    {
+                        err = true;
+                        _res = "SERVER_IS_LOCKED";
+                        return ERROR;
+                    }
+
+                    rt = CmdAutoGain(ref _reqArr, ref _res, ref error);
+                    if (rt < 0)
+                    {
+                        err = true;
+                        _res = System.Reflection.MethodBase.GetCurrentMethod().Name + " " + error;
+                        break;
+                    }
+                    break;
+
+
 
                 default:
                     err = true;
