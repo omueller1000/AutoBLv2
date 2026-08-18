@@ -77,8 +77,8 @@ namespace AutoBLv2.SRV
 
 
 
-        private Int32 REQUEST_LENGTH_AUTO_GAIN_MIN = 3;
-        private Int32 REQUEST_LENGTH_AUTO_GAIN_MAX = 8;
+        private Int32 REQUEST_LENGTH_AUTO_GAIN_MIN = 4;
+        private Int32 REQUEST_LENGTH_AUTO_GAIN_MAX = 12;
         private Int32 OFFSET_AUTO_GAIN_EXECUTE = 2;
 
         private Int32 MAX_AMPLIFIER_INDEX = 4;  // beamline specific
