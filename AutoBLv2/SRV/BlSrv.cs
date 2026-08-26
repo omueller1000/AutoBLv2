@@ -25,6 +25,7 @@ namespace AutoBLv2.SRV
         private Int32 REQUEST_LENGTH_AUTO_GAIN_MAX = 12;
         private Int32 OFFSET_AUTO_GAIN_EXECUTE = 2;
 
+
         private Int32 MAX_AMPLIFIER_INDEX = 4;  // beamline specific
         private Int32 MAX_AMPLIFIER_COUNT = 6;
         private Int32 MAX_ENERGY_COUNT = 6;
@@ -34,11 +35,15 @@ namespace AutoBLv2.SRV
 
 
 
+        public static AutoGain __AutoGain;
+        public FpgaMonochromator __fpgaMono;
+
 
         #region Variables
         //-----------------------------------------------------------
         private static ServerLock __serverLock;
         private FpgaDaq __fpgaDaq;
+        
         //-----------------------------------------------------------
         private static readonly object __taskLock = new object();
         private static string __currentTask = "";
@@ -62,6 +67,12 @@ namespace AutoBLv2.SRV
             __fpgaDaq = _fpgaDaq;
             __serverLock = _lock;
 
+
+            __AutoGain = new AutoGain();
+
+            __fpgaMono = new FpgaMonochromator();
+
+            // beamline specific configuration
             __srsI0 = new SRS570("BL22:SRS570_AMP1", ref __fpgaDaq, 0);
             __srsI1 = new SRS570("BL22:SRS570_AMP2", ref __fpgaDaq, 1);
             __srsI2 = new SRS570("BL22:SRS570_AMP3", ref __fpgaDaq, 2);
@@ -105,14 +116,17 @@ namespace AutoBLv2.SRV
 
 
 
-
+        private void CmdAutoGainAbort()
+        {
+            __AutoGain.Abort = true;
+        }
         private Int32 CmdAutoGain(ref string[] _reqArr, ref string _res, ref string _error)
         {
             Int32 rt;
             bool validateOnly = true;
             List<double> energyList;
             List<Int32> ampliferIndexList;
-            SRS570[] selectedAmplifiers;
+            
 
 
 
@@ -181,7 +195,7 @@ namespace AutoBLv2.SRV
                         return ERROR;
                     }
 
-                    // search dublicates
+                    // search duplicates
                     for (Int32 j = 0; j < i; j++)
                     {
                         if (ampliferIndexList[i] == ampliferIndexList[j])
@@ -210,7 +224,7 @@ namespace AutoBLv2.SRV
                         return ERROR;
                     }
 
-                    // search dublicates
+                    // search duplicates
                     for (Int32 j = 0; j < i; j++)
                     {
                         if (energyList[i] == energyList[j])
@@ -253,8 +267,6 @@ namespace AutoBLv2.SRV
 
 
 
-            ampliferIndexList.Sort();
-            energyList.Sort();
 
 
             __WorkerThread = new Thread(() => AutoGainBlocking(ampliferIndexList, energyList, ref __staticError));
@@ -274,15 +286,20 @@ namespace AutoBLv2.SRV
 
 
 
-
+        
 
 
         private Int32 AutoGainBlocking(List<Int32> _amplifiers, List<double> _energies, ref string _error)
         {
             Int32 rt;
-            AutoGain AutoGain;
+            
             SRS570[] selectedAmplifiers;
             Int32[] sensId;
+            double achievedEnergy;
+
+
+            _amplifiers.Sort();
+            _energies.Sort();
 
             
 
@@ -294,8 +311,39 @@ namespace AutoBLv2.SRV
 
 
 
-            AutoGain = new AutoGain();
-            AutoGain.FindMaxGain(ref selectedAmplifiers, out sensId, ref _error);
+            if (_energies.Count == 0)
+            {
+                rt = __AutoGain.FindMaxGain(ref selectedAmplifiers, out sensId, ref _error);
+                if (rt != AutoGain.SUCCESS)
+                {
+                    _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + _error;
+                    return ERROR;
+                }
+                return SUCCESS;
+            }
+            
+
+            for (Int32 i = 0; i < _energies.Count; i++)
+            {
+                
+
+                rt = __fpgaMono.MoveToEnergyBlocking(_energies[i], out achievedEnergy, 0, 0, ref _error );
+                if (rt != FpgaMonochromator.SUCCESS)
+                {
+                    _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + _error;
+                    return ERROR;
+                }
+
+                rt = __AutoGain.FindMaxGain(ref selectedAmplifiers, out sensId, ref _error);
+                if (rt != AutoGain.SUCCESS)
+                {
+                    _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + _error;
+                    return ERROR;
+                }
+                return SUCCESS;
+            }
+
+            
 
 
 
@@ -349,6 +397,10 @@ namespace AutoBLv2.SRV
                         _res = System.Reflection.MethodBase.GetCurrentMethod().Name + " " + error;
                         break;
                     }
+                    break;
+
+                case "AUTO_GAIN_ABORT":
+                    CmdAutoGainAbort();
                     break;
 
 

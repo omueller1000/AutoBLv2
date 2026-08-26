@@ -1,8 +1,10 @@
 ﻿using AutoBLv2.SRV;
+using Devices;
 using FPGA;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
 using static MongoDB.Driver.WriteConcern;
@@ -92,6 +94,8 @@ namespace AutoBLv2
             __fpgaDaqName = value;
             __fpgaDaq = new FpgaDaq(__fpgaDaqName);
 
+
+            
 
 
             #region Beamline Server

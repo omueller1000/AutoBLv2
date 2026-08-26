@@ -13,4 +13,8 @@
     <PackageReference Include="MongoDB.Driver" Version="3.10.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Automation\ToDo\" />
+  </ItemGroup>
+
 </Project>

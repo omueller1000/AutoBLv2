@@ -14,7 +14,7 @@ namespace Automation
         //-----------------------------------------------------------
         public const Int32 SUCCESS = 1;
         public const Int32 ERROR = -1;
-        public const Int32 ABORT = 0;
+        public const Int32 ABORT = -2;
         //-----------------------------------------------------------
         private const Int32 SRS_SLEEP = 100;
         //-----------------------------------------------------------
@@ -22,11 +22,11 @@ namespace Automation
 
 
 
-
-
         #region Properties
         //-----------------------------------------------------------
         public bool Abort { get; set; }
+        public Int32 MaxSensitivityId { get; set; }
+        public Int32 MinSensitivityId { get; set; }
         //-----------------------------------------------------------
         #endregion
 
@@ -36,7 +36,9 @@ namespace Automation
         //===========================================================
         public AutoGain()
         {
-            this.Abort = false;            
+            this.Abort = false;
+            this.MaxSensitivityId = 9;  // 1e9 V/A
+            this.MinSensitivityId = 21; // 1e5 V/A
         }
         //===========================================================
 
@@ -47,9 +49,7 @@ namespace Automation
 
         public Int32 FindMaxGain(ref SRS570[] _amplifiers, out Int32[] _sensId, ref string _error)
         {
-            Int32 rt;
-            Int32 minSensId = 21;   // 1e5
-            Int32 maxSensId = 9;   // 1e9
+            Int32 rt;           
 
             double[] aiAverage;
             double[] aiStdDev;
@@ -57,6 +57,7 @@ namespace Automation
             bool[] findMaxGainDone;
             bool allFindMaxGainDone = false;
 
+            this.Abort = false; // reset abort
 
 
             _sensId = new Int32[_amplifiers.Length];
@@ -65,9 +66,14 @@ namespace Automation
             {
                 // reset Offset
                 rt = _amplifiers[amplifierIdx].SetOffset(0, 1, ref _error);
+                if (rt != SRS570.SUCCESS)
+                {
+                    _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + _error;
+                    return ERROR;
+                }
 
                 findMaxGainDone[amplifierIdx] = false;
-                _sensId[amplifierIdx] = minSensId;
+                _sensId[amplifierIdx] = this.MinSensitivityId;
             }
 
 
@@ -106,7 +112,7 @@ namespace Automation
                 // adjust gains
                 for (Int32 amplifierIdx = 0; amplifierIdx < _amplifiers.Length; amplifierIdx++)
                 {
-                    if (!findMaxGainDone[amplifierIdx])
+                    if (findMaxGainDone[amplifierIdx])
                         continue;
                     
                     if (aiAverage[_amplifiers[amplifierIdx].AiChannel] > _amplifiers[amplifierIdx].SignalHighLimit)
@@ -115,15 +121,15 @@ namespace Automation
                         _sensId[amplifierIdx]++; // decrease gain
                         findMaxGainDone[amplifierIdx] = true;
                     }
-                    else if (_sensId[amplifierIdx] == maxSensId)
+                    else if (_sensId[amplifierIdx] == this.MaxSensitivityId)
                     {
                         // if gain is already set to max gain, mark it as optimized
                         findMaxGainDone[amplifierIdx] = true;
                     }
                     else
                     {
-                        // if gain is still too low increase gain but not above max gain
-                        if (_sensId[amplifierIdx] > maxSensId) // make sure not too exceed max gain
+                        // if gain is too low increase gain but not above max gain
+                        if (_sensId[amplifierIdx] > this.MaxSensitivityId) // make sure not too exceed max gain
                             _sensId[amplifierIdx]--; // increase gain
                     }
                     
@@ -134,18 +140,23 @@ namespace Automation
                 allFindMaxGainDone = true;
                 for (Int32 amplifierIdx = 0; amplifierIdx < _amplifiers.Length; amplifierIdx++)
                     allFindMaxGainDone &= findMaxGainDone[amplifierIdx];
-
                 if (allFindMaxGainDone)
                     break;
 
 
                 if (this.Abort)
                     break;
-
-                Console.Write(".");
-
             }
 
+
+
+            // if exited due to abort
+            if (this.Abort)
+            {
+                Console.WriteLine("FindMaxGain: ABORT");
+                this.Abort = false; // reset ABORT
+                return ABORT;
+            }
 
 
             // finally
@@ -160,14 +171,6 @@ namespace Automation
                 }
             }
 
-
-
-            if (this.Abort)
-            {
-                Console.WriteLine("FindMaxGain: ABORT");
-                this.Abort = false; // reset ABORT
-                return ABORT;
-            }
 
             Console.WriteLine("FindMaxGain: SUCCESS");
 
