@@ -193,6 +193,8 @@ namespace FPGA
 
                 if (fpgaDataFrameCounter > this.nSamples)
                     break;
+
+                Console.Write("@");
             }
 
             //~~~~~~~~~~~~~~~~~~~~~~~~~~~

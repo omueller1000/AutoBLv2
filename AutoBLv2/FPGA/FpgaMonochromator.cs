@@ -19,6 +19,7 @@ namespace Devices
         #region Constants
         //-----------------------------------------------------------
         string MONO_DEF_PATH = "C:\\SSRL_LOCAL_OM\\definitions\\mono.def";
+        //string MOTOR_DEF_PATH = "C:\\SSRL_LOCAL_OM\\definitions\\motor.def";
         //-----------------------------------------------------------
         public const Int32 SUCCESS = 1;
         public const Int32 ERROR = -1;
@@ -40,7 +41,7 @@ namespace Devices
         #region Properties
         //-----------------------------------------------------------
         public bool UseTable{ get; set; }
-        public bool UseEncoder { get; set; }
+        public bool UseTableEncoders { get; set; }
         //-----------------------------------------------------------
         #endregion
 
@@ -62,8 +63,13 @@ namespace Devices
             double monoCrystalGap;
 
             this.UseTable = false;
-            this.UseEncoder = false;
+            this.UseTableEncoders = false;
 
+
+            double monoCrystalEncoderOffset;
+            double monoTableV1EncoderOffset;
+            double monoTableV2EncoderOffset;
+            
 
 
             rt = Def.Def.ReadDefinition(MONO_DEF_PATH, "MONO_FPGA_NAME", out valueStr, ref error);
@@ -123,6 +129,34 @@ namespace Devices
             }            
             monoCrystalGap = double.Parse(valueStr);
 
+            rt = Def.Def.ReadDefinition(MONO_DEF_PATH, $"MONO_CRYSTAL_ENCODER_OFFSET", out valueStr, ref error);
+            if (rt != Def.Def.SUCCESS)
+            {
+                error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + error;
+                Console.WriteLine(error);
+                return;
+            }
+            monoCrystalEncoderOffset = double.Parse(valueStr);
+
+
+            rt = Def.Def.ReadDefinition(MONO_DEF_PATH, $"MONO_TABLEV1_ENCODER_OFFSET", out valueStr, ref error);
+            if (rt != Def.Def.SUCCESS)
+            {
+                error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + error;
+                Console.WriteLine(error);
+                return;
+            }
+            monoTableV1EncoderOffset = double.Parse(valueStr);
+
+            rt = Def.Def.ReadDefinition(MONO_DEF_PATH, $"MONO_TABLEV2_ENCODER_OFFSET", out valueStr, ref error);
+            if (rt != Def.Def.SUCCESS)
+            {
+                error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + error;
+                Console.WriteLine(error);
+                return;
+            }
+            monoTableV2EncoderOffset = double.Parse(valueStr);
+
 
 
             __crystal = new FpgaDaqMotor(monoFpgaName, monoCrystalMotorId);            
@@ -132,6 +166,10 @@ namespace Devices
             __crystal.Init();
             __tableV1.Init();
             __tableV2.Init();
+
+            __crystal.EncoderOffset = monoCrystalEncoderOffset;
+            __tableV1.EncoderOffset = monoTableV1EncoderOffset;
+            __tableV2.EncoderOffset = monoTableV2EncoderOffset;
 
             __mono = new XasMonochromator();
             __mono.LatticeSpacing = monoLatticeSpacing;
@@ -179,6 +217,53 @@ namespace Devices
         }
 
 
+        public Int32 SetTableToBeamOffset(ref string _error)
+        {
+            Int32 rt;
+            double tableToBeamOffset;
+            double beamOffset;
+            double currentBraggAngle;
+            double currentEnergy;            
+            double currentTableV1;
+            double currentTableV2;
+            double currentTableVert;
+           
+            currentBraggAngle = (__crystal.EncoderCounts / __crystal.EncoderCountesPerEGgu) + __crystal.EncoderOffset;
+
+            rt = __mono.ConvertAngleToEnergy(currentBraggAngle, out currentEnergy);
+            if (rt != XasMonochromator.SUCCESS)
+            {
+                _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name;
+                _error += " XasMonochromator";
+                return ERROR;
+            }
+
+            rt = __mono.GetBeamOffset(currentEnergy, out beamOffset);
+            if (rt != XasMonochromator.SUCCESS)
+            {
+                _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name;
+                _error += " XasMonochromator";
+                return ERROR;
+            }
+
+            currentTableV1 = (__tableV1.EncoderCounts / __tableV1.EncoderCountesPerEGgu) + __tableV1.EncoderOffset;
+            currentTableV2 = (__tableV2.EncoderCounts / __tableV2.EncoderCountesPerEGgu) + __tableV2.EncoderOffset;
+            currentTableVert = (currentTableV1 + currentTableV2) / 2.0;
+
+            tableToBeamOffset = currentTableVert - beamOffset;
+
+
+            rt = ca.put("BL22:STORE", ":TABLE_BEAM_OFFSET", tableToBeamOffset);
+            if (rt != ca.SUCCESS)
+            {
+                _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name;
+                _error += " caput";
+                return ERROR;
+            }
+
+            return SUCCESS;
+        }
+
 
         public Int32 MoveToEnergyBlocking(double _targetEnergy, out double _achievedEnergy, double _maxEnergyError, double _maxTableError, ref string _error)
         {
@@ -204,9 +289,6 @@ namespace Devices
             _achievedEnergy = 0;
 
 
-            //__crystal
-            //__tableV1
-            //__tableV2
 
             #region verify motors are not currently running
             //-----------------------------------------------------------
@@ -217,7 +299,8 @@ namespace Devices
                     break;
 
                 Thread.Sleep(LONG_SLEEP);
-                Console.WriteLine("_DMOV_CRYSTAL_");
+                //Console.WriteLine("_DMOV_CRYSTAL_");
+                Console.Write(".");
             }
             if (rt != FpgaDaqMotor.SUCCESS)
             {
@@ -236,7 +319,8 @@ namespace Devices
                         break;
 
                     Thread.Sleep(LONG_SLEEP);
-                    Console.WriteLine("_DMOV_V1_");
+                    //Console.WriteLine("_DMOV_V1_");
+                    Console.Write(".");
                 }
                 if (rt != FpgaDaqMotor.SUCCESS)
                 {
@@ -252,7 +336,8 @@ namespace Devices
                         break;
 
                     Thread.Sleep(LONG_SLEEP);
-                    Console.WriteLine("_DMOV_V2_");
+                    //Console.WriteLine("_DMOV_V2_");
+                    Console.Write(".");
                 }
                 if (rt != FpgaDaqMotor.SUCCESS)
                 {
@@ -291,11 +376,6 @@ namespace Devices
 
 
 
-
-            
-
-
-
             #region move Crystal
             //-----------------------------------------------------------
             rt = __crystal.MoveAbsolute(targetMotorCrystal);
@@ -318,7 +398,8 @@ namespace Devices
                 if (rt == FpgaDaqMotor.SUCCESS && dmov == 1)
                     break;
 
-                Console.Write("_DMOV_CRYSTAL_");
+                //Console.Write("_DMOV_CRYSTAL_");
+                Console.Write(".");
                 Thread.Sleep(SHORT_SLEEP);
             }
             //-----------------------------------------------------------
@@ -357,7 +438,7 @@ namespace Devices
 
             double targetTableVert1;
             double targetTableVert2;
-            double targetTableVert;
+            double targetTableVert = 0;
 
             double achievedTableVert1;
             double achievedTableVert2;
@@ -367,9 +448,10 @@ namespace Devices
             double tableLength = 1000;  // distance between two table jacks
 
             double beamOffset;
+            double tableToBeamOffset;
 
 
-            if (!this.UseEncoder)
+            if (!this.UseTableEncoders)
             {
                 // if no encoders can be used, we have to assume that the table moves reproducable
 
@@ -404,8 +486,15 @@ namespace Devices
                 }
 
 
-                double SIGMA_OFFSET = 0;    // NEEDS TO BE READ FROM A DATA STORE
-                targetTableVert = beamOffset + SIGMA_OFFSET;
+                rt = ca.get("BL22:STORE", ":TABLE_BEAM_OFFSET", out tableToBeamOffset);
+                if (rt != ca.SUCCESS)
+                {
+                    _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name;
+                    _error += " caput";
+                    return ERROR;
+                }
+                
+                targetTableVert = beamOffset + tableToBeamOffset;
 
 
                 // get the current table position based on encoder
@@ -455,7 +544,8 @@ namespace Devices
                 if (rt == FpgaDaqMotor.SUCCESS && dmov == 1)   // checking rt is important here
                     break;
 
-                Console.Write("_DMOV_TABLE_V1_");
+                //Console.Write("_DMOV_TABLE_V1_");
+                Console.Write(".");
                 Thread.Sleep(SHORT_SLEEP);
             }
 
@@ -465,7 +555,8 @@ namespace Devices
                 if (rt == FpgaDaqMotor.SUCCESS && dmov == 1)   // checking rt is important here
                     break;
 
-                Console.Write("_DMOV_TABLE_V2_");
+                //Console.Write("_DMOV_TABLE_V2_");
+                Console.Write(".");
                 Thread.Sleep(SHORT_SLEEP);
             }
             //-----------------------------------------------------------
@@ -473,23 +564,28 @@ namespace Devices
 
             Thread.Sleep(LONG_SLEEP);
 
-            #region get achieved table position based on encoder and calculate deltaTable
-            //-----------------------------------------------------------
-            achievedTableVert1 = (__tableV1.EncoderCounts / __tableV1.EncoderCountesPerEGgu) + __tableV1.EncoderOffset;
-            achievedTableVert2 = (__tableV2.EncoderCounts / __tableV2.EncoderCountesPerEGgu) + __tableV2.EncoderOffset;
-            achievedTableVert = (achievedTableVert1 + achievedTableVert2) / 2.0;
 
-            tableError = Math.Abs(achievedTableVert - targetTableVert);
-            //-----------------------------------------------------------
-            #endregion
+            if (this.UseTableEncoders)
+            {
+                #region get achieved table position based on encoder and calculate deltaTable
+                //-----------------------------------------------------------
+                achievedTableVert1 = (__tableV1.EncoderCounts / __tableV1.EncoderCountesPerEGgu) + __tableV1.EncoderOffset;
+                achievedTableVert2 = (__tableV2.EncoderCounts / __tableV2.EncoderCountesPerEGgu) + __tableV2.EncoderOffset;
+                achievedTableVert = (achievedTableVert1 + achievedTableVert2) / 2.0;
+
+                tableError = Math.Abs(achievedTableVert - targetTableVert);
+                //-----------------------------------------------------------
+                #endregion
+
+            }
 
 
-            
+
             return SUCCESS;
         }
 
 
-
+     
 
 
 

@@ -29,7 +29,7 @@ namespace AutoBLv2.SRV
         private Int32 MAX_AMPLIFIER_INDEX = 4;  // beamline specific
         private Int32 MAX_AMPLIFIER_COUNT = 6;
         private Int32 MAX_ENERGY_COUNT = 6;
-        private Int32 MIN_MONO_ENERGY = 5000;
+        private Int32 MIN_MONO_ENERGY = 4500;
         private Int32 MAX_MONO_ENERGY = 40000;
 
 
@@ -71,6 +71,8 @@ namespace AutoBLv2.SRV
             __AutoGain = new AutoGain();
 
             __fpgaMono = new FpgaMonochromator();
+            __fpgaMono.UseTable = true;
+            __fpgaMono.UseTableEncoders = true;
 
             // beamline specific configuration
             __srsI0 = new SRS570("BL22:SRS570_AMP1", ref __fpgaDaq, 0);
@@ -113,13 +115,24 @@ namespace AutoBLv2.SRV
 
 
 
-
-
-
-        private void CmdAutoGainAbort()
+        private Int32 CmdSetTableToBeamOffset(ref string _error)
         {
-            __AutoGain.Abort = true;
+            Int32 rt;
+
+            rt = __fpgaMono.SetTableToBeamOffset(ref _error);
+            if (rt != FpgaMonochromator.SUCCESS)
+            {
+                _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + _error;
+                return ERROR;
+            }
+
+            return SUCCESS;
         }
+
+
+
+
+    
         private Int32 CmdAutoGain(ref string[] _reqArr, ref string _res, ref string _error)
         {
             Int32 rt;
@@ -281,12 +294,16 @@ namespace AutoBLv2.SRV
 
             return SUCCESS;
         }
+        private void CmdAutoGainAbort()
+        {
+            __AutoGain.Abort = true;
+        }
         //-----------------------------------------------------------
         #endregion
 
 
 
-        
+
 
 
         private Int32 AutoGainBlocking(List<Int32> _amplifiers, List<double> _energies, ref string _error)
@@ -295,7 +312,9 @@ namespace AutoBLv2.SRV
             
             SRS570[] selectedAmplifiers;
             Int32[] sensId;
+            List<Int32[]> sensIdList;
             double achievedEnergy;
+
 
 
             _amplifiers.Sort();
@@ -321,12 +340,12 @@ namespace AutoBLv2.SRV
                 }
                 return SUCCESS;
             }
-            
+
+
+            sensIdList = new List<int[]>();
 
             for (Int32 i = 0; i < _energies.Count; i++)
             {
-                
-
                 rt = __fpgaMono.MoveToEnergyBlocking(_energies[i], out achievedEnergy, 0, 0, ref _error );
                 if (rt != FpgaMonochromator.SUCCESS)
                 {
@@ -340,10 +359,39 @@ namespace AutoBLv2.SRV
                     _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + _error;
                     return ERROR;
                 }
-                return SUCCESS;
+
+                sensIdList.Add(sensId);
             }
 
-            
+
+            // find the min gain across all energies            
+            sensId = new Int32[_amplifiers.Count];
+            for (Int32 amplifierChannel = 0; amplifierChannel < _amplifiers.Count; amplifierChannel++)
+            {
+                sensId[amplifierChannel] = sensIdList[0][amplifierChannel];
+            }
+            for (Int32 i = 1; i < sensIdList.Count; i++)
+            {
+                for (Int32 amplifierChannel = 0; amplifierChannel < _amplifiers.Count; amplifierChannel++)
+                {
+
+                    if (sensIdList[i][amplifierChannel] > sensId[amplifierChannel])
+                        sensId[amplifierChannel] = sensIdList[i][amplifierChannel];
+                }
+            }
+
+
+            // set amplifier gain
+            for (Int32 amplifierChannel = 0; amplifierChannel < _amplifiers.Count; amplifierChannel++)
+            {
+                rt = selectedAmplifiers[amplifierChannel].SetGain(sensId[amplifierChannel], ref _error);
+                if (rt != SRS570.SUCCESS)
+                {
+                    _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + _error;
+                    return ERROR;
+                }
+            }
+
 
 
 
@@ -372,6 +420,16 @@ namespace AutoBLv2.SRV
 
                 case "GET_STATUS":
                     rt = CmdGetStatus(ref _res, ref error);
+                    if (rt < 0)
+                    {
+                        err = true;
+                        _res = System.Reflection.MethodBase.GetCurrentMethod().Name + " " + error;
+                        break;
+                    }
+                    break;
+
+                case "SET_TABLE_TO_BEAM_OFFSET":
+                    rt = CmdSetTableToBeamOffset(ref error);
                     if (rt < 0)
                     {
                         err = true;
