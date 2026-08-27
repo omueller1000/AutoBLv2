@@ -69,10 +69,8 @@ namespace AutoBLv2.SRV
 
 
             __AutoGain = new AutoGain();
-
             __fpgaMono = new FpgaMonochromator();
-            __fpgaMono.UseTable = true;
-            __fpgaMono.UseTableEncoders = true;
+
 
             // beamline specific configuration
             __srsI0 = new SRS570("BL22:SRS570_AMP1", ref __fpgaDaq, 0);

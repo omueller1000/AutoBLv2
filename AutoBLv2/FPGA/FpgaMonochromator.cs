@@ -159,6 +159,27 @@ namespace Devices
 
 
 
+
+            rt = Def.Def.ReadDefinition(MONO_DEF_PATH, "MONO_USE_TABLE", out valueStr, ref error);
+            if (rt != Def.Def.SUCCESS)
+            {
+                error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + error;
+                Console.WriteLine(error);
+                return;
+            }
+            this.UseTable = Int32.Parse(valueStr) == 0 ? false : true;
+
+
+            rt = Def.Def.ReadDefinition(MONO_DEF_PATH, "MONO_USE_TABLE_ENCODERS", out valueStr, ref error);
+            if (rt != Def.Def.SUCCESS)
+            {
+                error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + error;
+                Console.WriteLine(error);
+                return;
+            }
+            this.UseTableEncoders = Int32.Parse(valueStr) == 0 ? false : true;
+
+
             __crystal = new FpgaDaqMotor(monoFpgaName, monoCrystalMotorId);            
             __tableV1 = new FpgaDaqMotor(monoFpgaName, monoTableV1MotorId);
             __tableV2 = new FpgaDaqMotor(monoFpgaName, monoTableV2MotorId);
