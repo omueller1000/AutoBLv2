@@ -31,9 +31,9 @@ namespace Devices
         #region Variables
         //-----------------------------------------------------------        
         private XasMonochromator __mono;
-        private FpgaDaqMotor __crystal;
-        private FpgaDaqMotor __tableV1;
-        private FpgaDaqMotor __tableV2;
+        private EpicsMotor __crystal;
+        private EpicsMotor __tableV1;
+        private EpicsMotor __tableV2;
         //-----------------------------------------------------------
         #endregion
 
@@ -180,9 +180,9 @@ namespace Devices
             this.UseTableEncoders = Int32.Parse(valueStr) == 0 ? false : true;
 
 
-            __crystal = new FpgaDaqMotor(monoFpgaName, monoCrystalMotorId);            
-            __tableV1 = new FpgaDaqMotor(monoFpgaName, monoTableV1MotorId);
-            __tableV2 = new FpgaDaqMotor(monoFpgaName, monoTableV2MotorId);
+            __crystal = new EpicsMotor(monoFpgaName, monoCrystalMotorId);            
+            __tableV1 = new EpicsMotor(monoFpgaName, monoTableV1MotorId);
+            __tableV2 = new EpicsMotor(monoFpgaName, monoTableV2MotorId);
 
             __crystal.Init();
             __tableV1.Init();
@@ -316,14 +316,13 @@ namespace Devices
             while (true)
             {
                 rt = __crystal.cagetDMOV(out dmov);
-                if (rt == FpgaDaqMotor.SUCCESS && dmov == 1)
+                if (rt == EpicsMotor.SUCCESS && dmov == 1)
                     break;
 
-                Thread.Sleep(LONG_SLEEP);
-                //Console.WriteLine("_DMOV_CRYSTAL_");
+                Thread.Sleep(SHORT_SLEEP);
                 Console.Write(".");
             }
-            if (rt != FpgaDaqMotor.SUCCESS)
+            if (rt != EpicsMotor.SUCCESS)
             {
                 _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name;
                 _error += " MotorIsMoving_or_MotorIsUnavailable";
@@ -336,14 +335,14 @@ namespace Devices
                 while (true)
                 {
                     rt = __tableV1.cagetDMOV(out dmov);
-                    if (rt == FpgaDaqMotor.SUCCESS && dmov == 1)
+                    if (rt == EpicsMotor.SUCCESS && dmov == 1)
                         break;
 
                     Thread.Sleep(LONG_SLEEP);
                     //Console.WriteLine("_DMOV_V1_");
                     Console.Write(".");
                 }
-                if (rt != FpgaDaqMotor.SUCCESS)
+                if (rt != EpicsMotor.SUCCESS)
                 {
                     _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name;
                     _error += " MotorIsMoving_or_MotorIsUnavailable";
@@ -353,14 +352,14 @@ namespace Devices
                 while (true)
                 {
                     rt = __tableV2.cagetDMOV(out dmov);
-                    if (rt == FpgaDaqMotor.SUCCESS && dmov == 1)
+                    if (rt == EpicsMotor.SUCCESS && dmov == 1)
                         break;
 
                     Thread.Sleep(LONG_SLEEP);
                     //Console.WriteLine("_DMOV_V2_");
                     Console.Write(".");
                 }
-                if (rt != FpgaDaqMotor.SUCCESS)
+                if (rt != EpicsMotor.SUCCESS)
                 {
                     _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name;
                     _error += " MotorIsMoving_or_MotorIsUnavailable";
@@ -400,7 +399,7 @@ namespace Devices
             #region move Crystal
             //-----------------------------------------------------------
             rt = __crystal.MoveAbsolute(targetMotorCrystal);
-            if (rt != FpgaDaqMotor.SUCCESS)
+            if (rt != EpicsMotor.SUCCESS)
             {
                 _error = System.Reflection.MethodBase.GetCurrentMethod().Name;
                 _error += " MoveAbsoluteFailed";
@@ -416,7 +415,7 @@ namespace Devices
             while (true)
             {
                 rt = __crystal.cagetDMOV(out dmov);
-                if (rt == FpgaDaqMotor.SUCCESS && dmov == 1)
+                if (rt == EpicsMotor.SUCCESS && dmov == 1)
                     break;
 
                 //Console.Write("_DMOV_CRYSTAL_");
@@ -538,7 +537,7 @@ namespace Devices
             #region Move Table
             //-----------------------------------------------------------
             rt = __tableV1.MoveAbsolute(targetMotorTableV1);
-            if (rt != FpgaDaqMotor.SUCCESS)
+            if (rt != EpicsMotor.SUCCESS)
             {
                 _error = System.Reflection.MethodBase.GetCurrentMethod().Name;
                 _error += " MoveAbsoluteFailed";
@@ -546,7 +545,7 @@ namespace Devices
             }
 
             rt = __tableV2.MoveAbsolute(targetMotorTableV2);
-            if (rt != FpgaDaqMotor.SUCCESS)
+            if (rt != EpicsMotor.SUCCESS)
             {
                 _error = System.Reflection.MethodBase.GetCurrentMethod().Name;
                 _error += " MoveAbsoluteFailed";
@@ -562,7 +561,7 @@ namespace Devices
             while (true)
             {
                 rt = __tableV1.cagetDMOV(out dmov);
-                if (rt == FpgaDaqMotor.SUCCESS && dmov == 1)   // checking rt is important here
+                if (rt == EpicsMotor.SUCCESS && dmov == 1)   // checking rt is important here
                     break;
 
                 //Console.Write("_DMOV_TABLE_V1_");
@@ -573,7 +572,7 @@ namespace Devices
             while (true)
             {
                 rt = __tableV2.cagetDMOV(out dmov);
-                if (rt == FpgaDaqMotor.SUCCESS && dmov == 1)   // checking rt is important here
+                if (rt == EpicsMotor.SUCCESS && dmov == 1)   // checking rt is important here
                     break;
 
                 //Console.Write("_DMOV_TABLE_V2_");
