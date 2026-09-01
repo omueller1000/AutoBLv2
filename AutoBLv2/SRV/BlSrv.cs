@@ -21,6 +21,11 @@ namespace AutoBLv2.SRV
         //-----------------------------------------------------------
         #endregion
 
+
+        private Int32 REQUEST_LENGTH_BEAM_SHUTTER = 3;
+        private Int32 OFFSET_BEAM_SHUTER_EXECUTE = 2;
+
+
         private Int32 REQUEST_LENGTH_AUTO_GAIN_MIN = 4;
         private Int32 REQUEST_LENGTH_AUTO_GAIN_MAX = 12;
         private Int32 OFFSET_AUTO_GAIN_EXECUTE = 2;
@@ -33,10 +38,11 @@ namespace AutoBLv2.SRV
         private Int32 MAX_MONO_ENERGY = 40000;
 
 
+        public EpicsSlit __Slit;
 
 
         public static AutoGain __AutoGain;
-        public FpgaMonochromator __fpgaMono;
+        public FpgaMonochromator __FpgaMono;
 
 
         #region Variables
@@ -69,7 +75,8 @@ namespace AutoBLv2.SRV
 
 
             __AutoGain = new AutoGain();
-            __fpgaMono = new FpgaMonochromator();
+            __FpgaMono = new FpgaMonochromator();
+            __Slit = new EpicsSlit();
 
 
             // beamline specific configuration
@@ -117,7 +124,7 @@ namespace AutoBLv2.SRV
         {
             Int32 rt;
 
-            rt = __fpgaMono.SetTableToBeamOffset(ref _error);
+            rt = __FpgaMono.SetTableToBeamOffset(ref _error);
             if (rt != FpgaMonochromator.SUCCESS)
             {
                 _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + _error;
@@ -297,6 +304,111 @@ namespace AutoBLv2.SRV
             __AutoGain.Abort = true;
         }
         //-----------------------------------------------------------
+
+
+        private Int32 CmdCloseBeamShutter(ref string[] _reqArr, ref string _res, ref string _error)
+        {
+            Int32 rt;
+            bool validateOnly = true;
+
+            if (_reqArr.Length != REQUEST_LENGTH_BEAM_SHUTTER)
+            {
+                _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name;
+                _error += " INVALID_NUMBER_OF_ARGUMENTS";
+                return ERROR;
+            }
+
+            // parse aguments
+            try
+            {
+                validateOnly = Int32.Parse(_reqArr[OFFSET_BEAM_SHUTER_EXECUTE]) == 0 ? true : false;
+            }
+            catch (Exception ex)
+            {
+                _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.Message;
+                return ERROR;
+            }
+
+
+            if (validateOnly)
+                return SUCCESS;
+
+
+
+
+
+            if (__WorkerThread != null && __WorkerThread.IsAlive)
+            {
+                _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name;
+                _error += " THREAD_ALIVE";
+                return ERROR;
+            }
+
+            //~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            lock (__taskLock)
+            {
+                __currentTask = $"CLOSING_SHUTTER";
+            }
+            //~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+
+
+            __WorkerThread = new Thread(() => __Slit.Close(ref __staticError));
+            __WorkerThread.IsBackground = true;
+            __WorkerThread.Start();
+
+            __MonitorThread = new Thread(() => MonitorThread(ref __WorkerThread, ""));
+            __MonitorThread.IsBackground = true;
+            __MonitorThread.Start();
+
+
+
+
+
+
+
+
+
+
+
+            return SUCCESS;
+        }
+        private Int32 CmdOpenBeamShutter(ref string[] _reqArr, ref string _res, ref string _error)
+        {
+            Int32 rt;
+            bool validateOnly = true;
+
+            if (_reqArr.Length != REQUEST_LENGTH_BEAM_SHUTTER)
+            {
+                _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name;
+                _error += " INVALID_NUMBER_OF_ARGUMENTS";
+                return ERROR;
+            }
+
+            // parse aguments
+            try
+            {
+                validateOnly = Int32.Parse(_reqArr[OFFSET_BEAM_SHUTER_EXECUTE]) == 0 ? true : false;
+            }
+            catch (Exception ex)
+            {
+                _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.Message;
+                return ERROR;
+            }
+
+            if (validateOnly)
+                return SUCCESS;
+
+
+
+
+
+            return SUCCESS;
+        }
+
+        //-----------------------------------------------------------
         #endregion
 
 
@@ -344,7 +456,7 @@ namespace AutoBLv2.SRV
 
             for (Int32 i = 0; i < _energies.Count; i++)
             {
-                rt = __fpgaMono.MoveToEnergyBlocking(_energies[i], out achievedEnergy, 0, 0, ref _error );
+                rt = __FpgaMono.MoveToEnergyBlocking(_energies[i], out achievedEnergy, 0, 0, ref _error );
                 if (rt != FpgaMonochromator.SUCCESS)
                 {
                     _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + _error;
@@ -426,6 +538,7 @@ namespace AutoBLv2.SRV
                     }
                     break;
 
+
                 case "SET_TABLE_TO_BEAM_OFFSET":
                     rt = CmdSetTableToBeamOffset(ref error);
                     if (rt < 0)
@@ -435,7 +548,6 @@ namespace AutoBLv2.SRV
                         break;
                     }
                     break;
-
 
 
                 case "AUTO_GAIN":
@@ -459,6 +571,26 @@ namespace AutoBLv2.SRV
                     CmdAutoGainAbort();
                     break;
 
+
+                case "CLOSE_BEAM_SHUTTER":
+                    rt = CmdCloseBeamShutter(ref _reqArr, ref _res, ref error);
+                    if (rt < 0)
+                    {
+                        err = true;
+                        _res = System.Reflection.MethodBase.GetCurrentMethod().Name + " " + error;
+                        break;
+                    }
+                    break;
+
+                case "OPEN_BEAM_SHUTTER":
+                    rt = CmdOpenBeamShutter(ref _reqArr, ref _res, ref error);
+                    if (rt < 0)
+                    {
+                        err = true;
+                        _res = System.Reflection.MethodBase.GetCurrentMethod().Name + " " + error;
+                        break;
+                    }
+                    break;
 
 
                 default:

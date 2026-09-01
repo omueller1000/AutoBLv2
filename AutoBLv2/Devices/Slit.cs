@@ -1,16 +1,14 @@
 ﻿using EPICS;
-using SharpCompress.Compressors.ZStandard.Unsafe;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using System.Transactions;
-using static System.Runtime.InteropServices.JavaScript.JSType;
+
 
 namespace Devices
 {
-    public class EpicsSlit
+    public class EpicsSlit : Shutter
     {
         #region Constants
         //-----------------------------------------------------------
@@ -23,6 +21,8 @@ namespace Devices
 
 
         #region Variables
+        //-----------------------------------------------------------
+        private static double __openPosition = 1;
         //-----------------------------------------------------------
         private double BottomJawDir = -1.0;
         private double TopJawDir = 1.0;
@@ -80,6 +80,9 @@ namespace Devices
             }
         }
         //-----------------------------------------------------------
+        public double ClosedPosition { get; set; }
+        public double OpenPosition { get { return __openPosition; } }
+        //-----------------------------------------------------------
         public bool IsMoving
         {
             get
@@ -109,7 +112,7 @@ namespace Devices
 
 
         //===========================================================
-        public EpicsSlit()
+        public EpicsSlit() : base()
         {
             // these motors are configured in a way that positive direction
             // generally moves away from the beam, i.e. increases intensity
@@ -124,6 +127,7 @@ namespace Devices
             Int32 spearMotorId;
             Int32 ssrlMotorId;
 
+            this.ClosedPosition = -1;
 
             rt = Def.Def.ReadDefinition(BL_DEF_PATH, "SLIT_MC_NAME", out valueStr, ref error);
             if (rt != Def.Def.SUCCESS)
@@ -152,7 +156,7 @@ namespace Devices
             }
             topMotorId = Int32.Parse(valueStr);
 
-            rt = Def.Def.ReadDefinition(BL_DEF_PATH, "SPEAR_MOTOR_ID", out valueStr, ref error);
+            rt = Def.Def.ReadDefinition(BL_DEF_PATH, "SLIT_SPEAR_MOTOR_ID", out valueStr, ref error);
             if (rt != Def.Def.SUCCESS)
             {
                 error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + error;
@@ -188,8 +192,8 @@ namespace Devices
 
 
 
-
-
+        #region Private Methods
+        //-----------------------------------------------------------
         private Int32 MoveJaws(EpicsMotor _jaw1, EpicsMotor _jaw2, double _val1, double _val2, bool _relative, bool _blocking, ref string _error)
         {
             Int32 rt;
@@ -288,9 +292,13 @@ namespace Devices
 
             return SUCCESS;
         }
+        //-----------------------------------------------------------
+        #endregion
 
 
 
+        #region Public Methods
+        //-----------------------------------------------------------        
         public Int32 MoveHGap(double _targetPosition, bool _blocking, ref string _error)
         {
             Int32 rt;
@@ -306,7 +314,6 @@ namespace Devices
             
             return SUCCESS;
         }
-
         public Int32 MoveVGap(double _targetPosition, bool _blocking, ref string _error)
         {
             Int32 rt;
@@ -322,8 +329,6 @@ namespace Devices
 
             return SUCCESS;
         }
-
-
         public Int32 MoveHCenter(double _targetPosition, bool _blocking, ref string _error)
         {
             Int32 rt;
@@ -339,8 +344,6 @@ namespace Devices
 
             return SUCCESS;
         }
-
-
         public Int32 MoveVCenter(double _targetPosition, bool _blocking, ref string _error)
         {
             Int32 rt;
@@ -356,8 +359,41 @@ namespace Devices
 
             return SUCCESS;
         }
+        //-----------------------------------------------------------        
+        #endregion
 
 
+
+        #region Override Methods
+        //-----------------------------------------------------------
+        public override Int32 Open(ref string _error)
+        {
+            Int32 rt;
+            rt = MoveVGap(this.OpenPosition, true, ref _error);
+            if (rt != SUCCESS)
+            {
+                _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + _error;
+                return ERROR;
+            }
+
+            return SUCCESS;
+        }
+        public override Int32 Close(ref string _error)
+        {
+            Int32 rt;
+
+            __openPosition = this.VGap;
+            rt = MoveVGap(this.ClosedPosition, true, ref _error);
+            if (rt != SUCCESS)
+            {
+                _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + _error;
+                return ERROR;
+            }
+
+            return SUCCESS;
+        }
+        //-----------------------------------------------------------
+        #endregion
 
 
 
