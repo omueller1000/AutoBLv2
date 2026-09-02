@@ -1,11 +1,7 @@
-﻿using System;
-//using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Automation;
+﻿using Automation;
 using Devices;
 using FPGA;
+//using System.Collections.Generic;
 
 namespace AutoBLv2.SRV
 {
@@ -14,35 +10,37 @@ namespace AutoBLv2.SRV
 
         #region Constants
         //-----------------------------------------------------------
+        private const string PATH_XAS_OFFSETS = "C:\\SSRL_LOCAL_OM\\definitions\\xasOffsets.def";
+        //-----------------------------------------------------------
         public const Int32 ERROR = -1;
         public const Int32 SUCCESS = 0;
         //-----------------------------------------------------------
         private const Int32 OFFSET_COMMAND = 1;
         //-----------------------------------------------------------
-        #endregion
-
-
         private Int32 REQUEST_LENGTH_BEAM_SHUTTER = 3;
         private Int32 OFFSET_BEAM_SHUTER_EXECUTE = 2;
-
-
+        //-----------------------------------------------------------
+        private Int32 REQUEST_LENGTH_COLLECT_OFFSETS = 4;
+        private Int32 OFFSET_COLLECT_OFFSETS_EXECUTE = 2;
+        private Int32 OFFSET_COLLECT_OFFSETS_NUM_SAMPLES = 3;
+        //-----------------------------------------------------------        
         private Int32 REQUEST_LENGTH_AUTO_GAIN_MIN = 4;
         private Int32 REQUEST_LENGTH_AUTO_GAIN_MAX = 12;
         private Int32 OFFSET_AUTO_GAIN_EXECUTE = 2;
-
-
+        //-----------------------------------------------------------
         private Int32 MAX_AMPLIFIER_INDEX = 4;  // beamline specific
         private Int32 MAX_AMPLIFIER_COUNT = 6;
         private Int32 MAX_ENERGY_COUNT = 6;
         private Int32 MIN_MONO_ENERGY = 4500;
         private Int32 MAX_MONO_ENERGY = 40000;
+        //-----------------------------------------------------------
+        #endregion
 
 
-        public EpicsSlit __Slit;
-
-
+        
         public static AutoGain __AutoGain;
         public FpgaMonochromator __FpgaMono;
+        public EpicsSlit __Slit;
 
 
         #region Variables
@@ -116,10 +114,6 @@ namespace AutoBLv2.SRV
             _res = "\r" + task;
             return SUCCESS;
         }
-
-
-
-
         private Int32 CmdSetTableToBeamOffset(ref string _error)
         {
             Int32 rt;
@@ -132,12 +126,7 @@ namespace AutoBLv2.SRV
             }
 
             return SUCCESS;
-        }
-
-
-
-
-    
+        }    
         private Int32 CmdAutoGain(ref string[] _reqArr, ref string _res, ref string _error)
         {
             Int32 rt;
@@ -284,9 +273,6 @@ namespace AutoBLv2.SRV
             //~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-
-
-
             __WorkerThread = new Thread(() => AutoGainBlocking(ampliferIndexList, energyList, ref __staticError));
             __WorkerThread.IsBackground = true;
             __WorkerThread.Start();
@@ -303,9 +289,32 @@ namespace AutoBLv2.SRV
         {
             __AutoGain.Abort = true;
         }
-        //-----------------------------------------------------------
+        private Int32 CmdGetGains(ref string _res, ref string _error)
+        {
+            Int32 rt;
+            double[] gain;
 
+            gain = new double[__srsArr.Length];
 
+            for (Int32 i = 0; i < __srsArr.Length; i++)
+            {
+                rt = __srsArr[i].GetGain(out gain[i], ref _error);
+                if (rt != SRS570.SUCCESS)                                
+                {                    
+                    _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + " " +_error;                        
+                    return ERROR;                    
+                }                
+            }
+
+            _res = "\r";
+            for (Int32 i = 0; i < __srsArr.Length; i++)
+            {
+                _res += gain[i].ToString() + " ";
+            }
+            _res += "\r";
+
+            return SUCCESS;        
+        }
         private Int32 CmdCloseBeamShutter(ref string[] _reqArr, ref string _res, ref string _error)
         {
             Int32 rt;
@@ -347,7 +356,7 @@ namespace AutoBLv2.SRV
             //~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             lock (__taskLock)
             {
-                __currentTask = $"CLOSING_SHUTTER";
+                __currentTask = $"CLOSE_BEAM_SHUTTER";
             }
             //~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -364,20 +373,10 @@ namespace AutoBLv2.SRV
             __MonitorThread.Start();
 
 
-
-
-
-
-
-
-
-
-
             return SUCCESS;
         }
         private Int32 CmdOpenBeamShutter(ref string[] _reqArr, ref string _res, ref string _error)
-        {
-            Int32 rt;
+        {            
             bool validateOnly = true;
 
             if (_reqArr.Length != REQUEST_LENGTH_BEAM_SHUTTER)
@@ -403,11 +402,131 @@ namespace AutoBLv2.SRV
 
 
 
+            if (__WorkerThread != null && __WorkerThread.IsAlive)
+            {
+                _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name;
+                _error += " THREAD_ALIVE";
+                return ERROR;
+            }
+
+            //~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            lock (__taskLock)
+            {
+                __currentTask = $"OPEN_BEAM_SHUTTER";
+            }
+            //~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+            __WorkerThread = new Thread(() => __Slit.Open(ref __staticError));
+            __WorkerThread.IsBackground = true;
+            __WorkerThread.Start();
+
+            __MonitorThread = new Thread(() => MonitorThread(ref __WorkerThread, ""));
+            __MonitorThread.IsBackground = true;
+            __MonitorThread.Start();
+
+            return SUCCESS;
+        }
+        //-----------------------------------------------------------
+        private Int32 CmdCollectOffsets(ref string[] _reqArr, ref string _res, ref string _error)
+        {
+            Int32 rt;
+            XasOffsets xasOffsets;
+            bool validateOnly = true;
+            Int32 nSamples;
+
+            if (_reqArr.Length != REQUEST_LENGTH_COLLECT_OFFSETS)
+            {
+                _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name;
+                _error += " INVALID_NUMBER_OF_ARGUMENTS";
+                return ERROR;
+            }
+
+            // parse aguments
+            try
+            {
+                validateOnly = Int32.Parse(_reqArr[OFFSET_COLLECT_OFFSETS_EXECUTE]) == 0 ? true : false;
+                nSamples = Int32.Parse(_reqArr[OFFSET_COLLECT_OFFSETS_NUM_SAMPLES]);
+            }
+            catch (Exception ex)
+            {
+                _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.Message;
+                return ERROR;
+            }
+
+            // validate
+            try
+            {
+                if (nSamples < 1 || nSamples > 1000000)
+                {
+                    _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name;
+                    _error += " ARGUMENT_OUT_OF_RANGE";
+                    return ERROR;
+                }
+            }
+            catch (Exception ex)
+            {
+                _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.Message;
+                return ERROR;
+            }
+
+            if (validateOnly)
+                return SUCCESS;
+
+
+
+            if (__WorkerThread != null && __WorkerThread.IsAlive)
+            {
+                _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name;
+                _error += " THREAD_ALIVE";
+                return ERROR;
+            }
+
+            //~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            lock (__taskLock)
+            {
+                __currentTask = $"COLLECT_OFFSETS";
+            }
+            //~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+            __WorkerThread = new Thread(() => CollectOffsetBlocking((Shutter)__Slit, nSamples, out xasOffsets, ref __staticError));
+            __WorkerThread.IsBackground = true;
+            __WorkerThread.Start();
+
+            __MonitorThread = new Thread(() => MonitorThread(ref __WorkerThread, ""));
+            __MonitorThread.IsBackground = true;
+            __MonitorThread.Start();
+
 
 
             return SUCCESS;
         }
+        private Int32 CmdGetOffsets(ref string _res, ref string _error)
+        {
+            Int32 rt;
+            XasOffsets xasOffsets;
 
+
+            xasOffsets = new XasOffsets(8, 0);
+            rt = xasOffsets.LoadDefinition(PATH_XAS_OFFSETS, ref _error);
+            if (rt != XasOffsets.SUCCESS)
+            {
+                _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + _error;
+                return ERROR;
+            }
+
+
+            _res = "\r";
+            for (Int32 i = 0; i < xasOffsets.numAi; i++)
+            {
+                _res += xasOffsets.aiOffset[i].ToString() + " ";
+            }
+            _res += "\r";
+
+
+            return SUCCESS;
+        }
         //-----------------------------------------------------------
         #endregion
 
@@ -510,7 +629,80 @@ namespace AutoBLv2.SRV
         }
 
 
+        private Int32 CollectOffsetBlocking(Shutter _beamShutter, Int32 nSamples, out XasOffsets _xasOffsets, ref string _error)
+        {
+            Int32 rt;
+            Int32 nSamplesTmp;
+            double[] aiAverage;
+            double[] aiStdDev;
 
+
+            _xasOffsets = new XasOffsets(8, 0);
+            rt = _xasOffsets.CaGetAOFF(__fpgaDaq.Name, ref _error);
+            if (rt != XasOffsets.SUCCESS)
+            {
+                _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + _error;
+                return ERROR;
+            }
+            rt = _xasOffsets.CaGetASLO(__fpgaDaq.Name, ref _error);
+            if (rt != XasOffsets.SUCCESS)
+            {
+                _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + _error;
+                return ERROR;
+            }
+
+
+
+
+            rt = _beamShutter.Close(ref _error);
+            if (rt != Shutter.SUCCESS)
+            {
+                _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + _error;
+                return ERROR;
+            }
+
+
+            nSamplesTmp = __fpgaDaq.nSamples;
+            __fpgaDaq.nSamples = nSamples;
+            rt = __fpgaDaq.CollectData(out aiAverage, out aiStdDev);
+            if (rt != FpgaDaq.SUCCESS)
+            {
+                _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name;                
+                _error += " CollectData";
+                return ERROR;
+            }
+            __fpgaDaq.nSamples = nSamplesTmp;
+
+
+            rt = _beamShutter.Open(ref _error);
+            if (rt != Shutter.SUCCESS)
+            {
+                _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + _error;
+                return ERROR;
+            }
+
+
+            
+
+
+            for (Int32 i = 0; i < aiAverage.Length; i++)
+            {
+                _xasOffsets.aiOffset[i] = -1.0 * aiAverage[i];
+            }
+            
+            rt = _xasOffsets.WriteDefinition(PATH_XAS_OFFSETS, ref _error);
+            if (rt != XasOffsets.SUCCESS)
+            {
+                _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + _error;
+                return ERROR;
+            }
+
+
+
+
+
+            return SUCCESS;
+        }
 
 
 
@@ -557,7 +749,6 @@ namespace AutoBLv2.SRV
                         _res = "SERVER_IS_LOCKED";
                         return ERROR;
                     }
-
                     rt = CmdAutoGain(ref _reqArr, ref _res, ref error);
                     if (rt < 0)
                     {
@@ -567,8 +758,20 @@ namespace AutoBLv2.SRV
                     }
                     break;
 
+
                 case "AUTO_GAIN_ABORT":
                     CmdAutoGainAbort();
+                    break;
+
+
+                case "GET_GAINS":
+                    rt = CmdGetGains(ref _res, ref error);
+                    if (rt < 0)
+                    {
+                        err = true;
+                        _res = System.Reflection.MethodBase.GetCurrentMethod().Name + " " + error;
+                        break;
+                    }
                     break;
 
 
@@ -582,8 +785,37 @@ namespace AutoBLv2.SRV
                     }
                     break;
 
+
                 case "OPEN_BEAM_SHUTTER":
                     rt = CmdOpenBeamShutter(ref _reqArr, ref _res, ref error);
+                    if (rt < 0)
+                    {
+                        err = true;
+                        _res = System.Reflection.MethodBase.GetCurrentMethod().Name + " " + error;
+                        break;
+                    }
+                    break;
+
+
+                case "COLLECT_OFFSETS":
+                    if (__serverLock.IsLocked)
+                    {
+                        err = true;
+                        _res = "SERVER_IS_LOCKED";
+                        return ERROR;
+                    }
+                    rt = CmdCollectOffsets(ref _reqArr, ref _res, ref error);
+                    if (rt < 0)
+                    {
+                        err = true;
+                        _res = System.Reflection.MethodBase.GetCurrentMethod().Name + " " + error;
+                        break;
+                    }
+                    break;
+
+
+                case "GET_OFFSETS":
+                    rt = CmdGetOffsets(ref _res, ref error);
                     if (rt < 0)
                     {
                         err = true;

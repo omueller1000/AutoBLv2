@@ -9,6 +9,14 @@ namespace Devices
 {
     public abstract class Shutter
     {
+        #region Constants
+        //-----------------------------------------------------------
+        public const Int32 SUCCESS = 1;
+        public const Int32 ERROR = -1;
+        //-----------------------------------------------------------
+        #endregion
+
+
 
 
         //===========================================================

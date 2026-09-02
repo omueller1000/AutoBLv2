@@ -291,7 +291,7 @@ namespace FPGA
     }
 
 
-    public class FpgaOffsets
+    public class FpgaOffsets_OLD
     {
         #region Constants
         //-----------------------------------------------------------------
@@ -344,7 +344,7 @@ namespace FPGA
 
 
         //=================================================================
-        public FpgaOffsets()
+        public FpgaOffsets_OLD()
         {
             __aiOffset = new double[__numAi];
             __aiSlope = new double[__numAi];

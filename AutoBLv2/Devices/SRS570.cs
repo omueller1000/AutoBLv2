@@ -271,12 +271,26 @@ namespace Devices
             return SUCCESS;
         }
         //-----------------------------------------------------------
-        public Int32 GetGain(out double _gain, ref string _error)
+        public Int32 GetSensitivity(out double _gain, ref string _error)
         {
             Int32 rt;
             _gain = -1;
 
             rt = ca.get(__deviceName, ":SENSITIVITY", out _gain);
+            if (rt < ca.SUCCESS)
+            {
+                _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name;
+                return ERROR;
+            }
+
+            return SUCCESS;
+        }
+        public Int32 GetGain(out double _gain, ref string _error)
+        {
+            Int32 rt;
+            _gain = -1;
+
+            rt = ca.get(__deviceName, ":GAIN", out _gain);
             if (rt < ca.SUCCESS)
             {
                 _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name;

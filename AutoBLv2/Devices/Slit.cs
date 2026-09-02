@@ -14,8 +14,8 @@ namespace Devices
         //-----------------------------------------------------------
         string BL_DEF_PATH = "C:\\SSRL_LOCAL_OM\\definitions\\bl.def";
         //-----------------------------------------------------------
-        public const Int32 SUCCESS = 1;
-        public const Int32 ERROR = -1;
+        //public const Int32 SUCCESS = Shutter.SUCCESS;
+        //public const Int32 ERROR = Shutter.ERROR;
         //-----------------------------------------------------------
         #endregion
 
