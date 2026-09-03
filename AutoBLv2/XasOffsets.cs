@@ -98,9 +98,7 @@ namespace AutoBLv2
             string line;
             string[] parts;
             Int32 err = 0;
-
-            //Int32 numAi = 0;
-            //Int32 numCnt = 0;
+            
             bool numAiRead = false;
             bool numCntRead = false;
 

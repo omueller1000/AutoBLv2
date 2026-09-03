@@ -180,6 +180,7 @@ namespace Def
             while (reader.Peek() >= 0)
             {
                 line = reader.ReadLine();
+                lineCounter++;
 
                 if (line[0] == '#')
                     continue;

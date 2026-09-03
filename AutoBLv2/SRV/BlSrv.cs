@@ -1,6 +1,8 @@
 ﻿using Automation;
 using Devices;
 using FPGA;
+using static MongoDB.Driver.WriteConcern;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 //using System.Collections.Generic;
 
 namespace AutoBLv2.SRV
@@ -11,6 +13,7 @@ namespace AutoBLv2.SRV
         #region Constants
         //-----------------------------------------------------------
         private const string PATH_XAS_OFFSETS = "C:\\SSRL_LOCAL_OM\\definitions\\xasOffsets.def";
+        private string BL_DEF_PATH = "C:\\SSRL_LOCAL_OM\\definitions\\bl.def";
         //-----------------------------------------------------------
         public const Int32 ERROR = -1;
         public const Int32 SUCCESS = 0;
@@ -46,6 +49,9 @@ namespace AutoBLv2.SRV
         public SampleShutter __sampleShutter;
 
 
+
+
+
         #region Variables
         //-----------------------------------------------------------
         private static ServerLock __serverLock;
@@ -69,27 +75,134 @@ namespace AutoBLv2.SRV
 
 
         //===========================================================
-        public BlSrv(ref FpgaDaq _fpgaDaq, ref ServerLock _lock, SampleShutter? _sampleShutter = null) 
+        public BlSrv(ref FpgaDaq _fpgaDaq, ref ServerLock _lock) 
         {
+
+
             __fpgaDaq = _fpgaDaq;
             __serverLock = _lock;
-
-
             __AutoGain = new AutoGain();
             __FpgaMono = new FpgaMonochromator();
             __Slit = new EpicsSlit();
-            if (_sampleShutter != null) __sampleShutter = _sampleShutter;
+
+
+         
             
 
             // beamline specific configuration
-            __srsI0 = new SRS570("BL22:SRS570_AMP1", ref __fpgaDaq, 0);
-            __srsI1 = new SRS570("BL22:SRS570_AMP2", ref __fpgaDaq, 1);
-            __srsI2 = new SRS570("BL22:SRS570_AMP3", ref __fpgaDaq, 2);
-            __srsI3 = new SRS570("BL22:SRS570_AMP4", ref __fpgaDaq, 3);
-            __srsArr = new SRS570[] { __srsI0, __srsI1, __srsI2, __srsI3 };
+            //__srsI0 = new SRS570("BL22:SRS570_AMP1", ref __fpgaDaq, 0);
+            //__srsI1 = new SRS570("BL22:SRS570_AMP2", ref __fpgaDaq, 1);
+            //__srsI2 = new SRS570("BL22:SRS570_AMP3", ref __fpgaDaq, 2);
+            //__srsI3 = new SRS570("BL22:SRS570_AMP4", ref __fpgaDaq, 3);
+            //__srsArr = new SRS570[] { __srsI0, __srsI1, __srsI2, __srsI3 };            
 
         }
         //===========================================================
+
+
+
+
+
+        public Int32 Init()
+        {
+            Int32 rt;
+            string error = "";
+            string sampleShutterName = "NULL";
+            string sampleShutterDo = "NULL";
+
+            SRS570 srs;
+            string numAmpsStr;
+            Int32 numAmps;
+            string ampEpicsName;
+            string ampLabel;
+            string ampAiStr;
+            Int32 ampAi;
+
+
+
+            #region Sample Shutter
+            //-----------------------------------------------------------
+            rt = Def.Def.ReadDefinition(BL_DEF_PATH, "SAMPLE_SHUTTER_EPICS_NAME", out sampleShutterName, ref error);
+            if (rt != Def.Def.SUCCESS)
+            {
+                error = System.Reflection.MethodBase.GetCurrentMethod().Name + " " + error;
+                return ERROR;
+            }
+            rt = Def.Def.ReadDefinition(BL_DEF_PATH, "SAMPLE_SHUTTER_DO", out sampleShutterDo, ref error);
+            if (rt != Def.Def.SUCCESS)
+            {
+                error = System.Reflection.MethodBase.GetCurrentMethod().Name + " " + error;
+                return ERROR;
+            }
+            if (sampleShutterName != "NULL" || sampleShutterDo != "NULL")
+            {
+                __sampleShutter = new SampleShutter(sampleShutterName, UInt32.Parse(sampleShutterDo));
+            }
+            //-----------------------------------------------------------
+            #endregion
+
+
+
+            #region Amplifiers
+            //-----------------------------------------------------------
+            rt = Def.Def.ReadDefinition(BL_DEF_PATH, "AMP_NUM", out numAmpsStr, ref error);
+            numAmps = Int32.Parse(numAmpsStr);
+
+            __srsArr = new SRS570[numAmps];
+            
+            for (Int32 i = 0; i < numAmps; i++)
+            {
+                rt = Def.Def.ReadDefinition(BL_DEF_PATH, $"AMP_{i + 1}_EPICS_NAME", out ampEpicsName, ref error);
+                if (rt != Def.Def.SUCCESS)
+                {
+                    error = System.Reflection.MethodBase.GetCurrentMethod().Name + " " + error;
+                    return ERROR;
+                }
+                rt = Def.Def.ReadDefinition(BL_DEF_PATH, $"AMP_{i + 1}_LABEL", out ampLabel, ref error);
+                if (rt != Def.Def.SUCCESS)
+                {
+                    error = System.Reflection.MethodBase.GetCurrentMethod().Name + " " + error;
+                    return ERROR;
+                }
+                rt = Def.Def.ReadDefinition(BL_DEF_PATH, $"AMP_{i + 1}_AI", out ampAiStr, ref error);
+                if (rt != Def.Def.SUCCESS)
+                {
+                    error = System.Reflection.MethodBase.GetCurrentMethod().Name + " " + error;
+                    return ERROR;
+                }
+
+
+                rt = Def.Def.ReadDefinition(BL_DEF_PATH, $"AMP_{i + 1}_LABEL", out ampLabel, ref error);
+                if (rt != Def.Def.SUCCESS)
+                {
+                    error = System.Reflection.MethodBase.GetCurrentMethod().Name + " " + error;
+                    return ERROR;
+                }              
+                ampAi = Int32.Parse(ampAiStr);
+
+                if (ampAi < 0 || ampAi >= FpgaDataFrame.numMaxAi)
+                {
+                    error = System.Reflection.MethodBase.GetCurrentMethod().Name;
+                    error += " ARGUMENT_OUT_OF_RANGE";
+                    return ERROR;
+                }
+                
+
+
+
+                srs = new SRS570(ampLabel, ampEpicsName, ref __fpgaDaq, ampAi);
+                __srsArr[i] = srs;
+            }
+            //-----------------------------------------------------------
+            #endregion
+
+
+            return SUCCESS;
+        }
+
+        
+
+
 
 
 
@@ -726,7 +839,7 @@ namespace AutoBLv2.SRV
 
             nSamplesTmp = __fpgaDaq.nSamples;
             __fpgaDaq.nSamples = nSamples;
-            rt = __fpgaDaq.CollectData(out aiAverage, out aiStdDev);
+            rt = __fpgaDaq.CollectDataCalibrated(out aiAverage, out aiStdDev);
             if (rt != FpgaDaq.SUCCESS)
             {
                 _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name;                

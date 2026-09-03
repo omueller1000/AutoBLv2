@@ -42,7 +42,7 @@ namespace Devices
 
         #region Properties
         //-----------------------------------------------------------
-        public string Name
+        public string Label
         {
             get;
             set;
@@ -68,7 +68,7 @@ namespace Devices
 
 
         //===========================================================
-        public SRS570(string _deviceName, ref FpgaDaq _fpgaDaq, Int32 _aiChannel)
+        public SRS570(string _label, string _deviceName, ref FpgaDaq _fpgaDaq, Int32 _aiChannel)
         {
             #region __SENS_DICT            
             //.....................................................
@@ -200,7 +200,8 @@ namespace Devices
 
 
 
-            this.Name = _deviceName;
+            //this.Name = _deviceName;
+            this.Label = _label;
             this.AiChannel = _aiChannel;
             this.SignalLowLimit = 0.0;
             this.SignalHighLimit = 4.0;//4.8;

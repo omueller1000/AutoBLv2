@@ -96,19 +96,16 @@ namespace AutoBLv2
             Console.WriteLine($"FpgaDaq: {value1}");
 
 
-            rt = Def.Def.ReadDefinition(BL_DEF_PATH, "SAMPLE_SHUTTER_EPICS_NAME", out value1, ref error);            
-            rt = Def.Def.ReadDefinition(BL_DEF_PATH, "SAMPLE_SHUTTER_DO", out value2, ref error);
-            Console.WriteLine($"SampleShutter: {value1}");
-            if (value1 != "NULL" && value2 != "NULL")
-            {
-                __sampleShutter = new SampleShutter(value1, UInt32.Parse(value2));
-            }
+
+            
+            
             
 
 
             #region Beamline Server
             //.................................................
-            __blSrv = new BlSrv(ref __fpgaDaq, ref __lock, __sampleShutter);
+            __blSrv = new BlSrv(ref __fpgaDaq, ref __lock);
+            rt = __blSrv.Init();
             Console.WriteLine("BlSrv");
             //.................................................
             #endregion
