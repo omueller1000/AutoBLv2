@@ -64,7 +64,7 @@ namespace AutoBLv2
         private OmServer __server;
         private string __dbLogName = "LOGS";
         private FpgaDaq __fpgaDaq;
-        private string __fpgaDaqName = "FPGA";
+        private SampleShutter __sampleShutter;
         //-----------------------------------------------------------
         private BlSrv __blSrv;
         //-----------------------------------------------------------
@@ -85,22 +85,30 @@ namespace AutoBLv2
         {
             Int32 rt;
             string error = "";
-            string value;
+            string value1;
+            string value2;
             __lock = new ServerLock();
 
 
 
-            rt = Def.Def.ReadDefinition(BL_DEF_PATH, "FPGA_NAME", out value, ref error);
-            __fpgaDaqName = value;
-            __fpgaDaq = new FpgaDaq(__fpgaDaqName);
+            rt = Def.Def.ReadDefinition(BL_DEF_PATH, "FPGA_NAME", out value1, ref error);
+            __fpgaDaq = new FpgaDaq(value1);
+            Console.WriteLine($"FpgaDaq: {value1}");
 
 
+            rt = Def.Def.ReadDefinition(BL_DEF_PATH, "SAMPLE_SHUTTER_EPICS_NAME", out value1, ref error);            
+            rt = Def.Def.ReadDefinition(BL_DEF_PATH, "SAMPLE_SHUTTER_DO", out value2, ref error);
+            Console.WriteLine($"SampleShutter: {value1}");
+            if (value1 != "NULL" && value2 != "NULL")
+            {
+                __sampleShutter = new SampleShutter(value1, UInt32.Parse(value2));
+            }
             
 
 
             #region Beamline Server
             //.................................................
-            __blSrv = new BlSrv(ref __fpgaDaq, ref __lock);
+            __blSrv = new BlSrv(ref __fpgaDaq, ref __lock, __sampleShutter);
             Console.WriteLine("BlSrv");
             //.................................................
             #endregion

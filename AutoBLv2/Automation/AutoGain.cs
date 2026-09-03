@@ -171,9 +171,6 @@ namespace Automation
                 }
             }
 
-
-            Console.WriteLine("FindMaxGain: SUCCESS");
-
             return SUCCESS;
         }
 

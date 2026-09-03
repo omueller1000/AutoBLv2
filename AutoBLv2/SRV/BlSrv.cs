@@ -24,9 +24,11 @@ namespace AutoBLv2.SRV
         private Int32 OFFSET_COLLECT_OFFSETS_EXECUTE = 2;
         private Int32 OFFSET_COLLECT_OFFSETS_NUM_SAMPLES = 3;
         //-----------------------------------------------------------        
-        private Int32 REQUEST_LENGTH_AUTO_GAIN_MIN = 4;
-        private Int32 REQUEST_LENGTH_AUTO_GAIN_MAX = 12;
+        private Int32 REQUEST_LENGTH_AUTO_GAIN_MIN = 6;
+        private Int32 REQUEST_LENGTH_AUTO_GAIN_MAX = 14;
         private Int32 OFFSET_AUTO_GAIN_EXECUTE = 2;
+        private Int32 OFFSET_AUTO_GAIN_COLLECT_OFFSETS = 3;
+        private Int32 OFFSET_AUTO_GAIN_RETURN = 4;
         //-----------------------------------------------------------
         private Int32 MAX_AMPLIFIER_INDEX = 4;  // beamline specific
         private Int32 MAX_AMPLIFIER_COUNT = 6;
@@ -41,6 +43,7 @@ namespace AutoBLv2.SRV
         public static AutoGain __AutoGain;
         public FpgaMonochromator __FpgaMono;
         public EpicsSlit __Slit;
+        public SampleShutter __sampleShutter;
 
 
         #region Variables
@@ -66,7 +69,7 @@ namespace AutoBLv2.SRV
 
 
         //===========================================================
-        public BlSrv(ref FpgaDaq _fpgaDaq, ref ServerLock _lock) 
+        public BlSrv(ref FpgaDaq _fpgaDaq, ref ServerLock _lock, SampleShutter? _sampleShutter = null) 
         {
             __fpgaDaq = _fpgaDaq;
             __serverLock = _lock;
@@ -75,7 +78,8 @@ namespace AutoBLv2.SRV
             __AutoGain = new AutoGain();
             __FpgaMono = new FpgaMonochromator();
             __Slit = new EpicsSlit();
-
+            if (_sampleShutter != null) __sampleShutter = _sampleShutter;
+            
 
             // beamline specific configuration
             __srsI0 = new SRS570("BL22:SRS570_AMP1", ref __fpgaDaq, 0);
@@ -131,6 +135,8 @@ namespace AutoBLv2.SRV
         {
             Int32 rt;
             bool validateOnly = true;
+            bool collectOffsets = false;
+            bool returnToStart = false;            
             List<double> energyList;
             List<Int32> ampliferIndexList;
             
@@ -156,8 +162,10 @@ namespace AutoBLv2.SRV
             try
             {
                 validateOnly = Int32.Parse(_reqArr[OFFSET_AUTO_GAIN_EXECUTE]) == 0 ? true : false;
+                collectOffsets = Int32.Parse(_reqArr[OFFSET_AUTO_GAIN_COLLECT_OFFSETS]) == 0 ? false : true;
+                returnToStart = Int32.Parse(_reqArr[OFFSET_AUTO_GAIN_RETURN]) == 0 ? false : true;
 
-                for (Int32 i = OFFSET_AUTO_GAIN_EXECUTE + 1; i < _reqArr.Length; i++)
+                for (Int32 i = OFFSET_AUTO_GAIN_RETURN + 1; i < _reqArr.Length; i++)
                 {
                     if (_reqArr[i][0] == 'A' || _reqArr[i][0] == 'a')
                     {
@@ -272,14 +280,26 @@ namespace AutoBLv2.SRV
             }
             //~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+            XasOffsets xasOffsets;
 
-            __WorkerThread = new Thread(() => AutoGainBlocking(ampliferIndexList, energyList, ref __staticError));
+
+            __WorkerThread = new Thread(() =>
+            {
+                AutoGainBlocking(ampliferIndexList, energyList, returnToStart, ref __staticError, __sampleShutter);
+                
+                if(collectOffsets)
+                    CollectOffsetBlocking(__Slit, 1000, out xasOffsets, ref __staticError);
+            });
             __WorkerThread.IsBackground = true;
             __WorkerThread.Start();
 
             __MonitorThread = new Thread(() => MonitorThread(ref __WorkerThread, ""));
             __MonitorThread.IsBackground = true;
             __MonitorThread.Start();
+
+
+
+
 
 
 
@@ -364,7 +384,7 @@ namespace AutoBLv2.SRV
 
 
 
-            __WorkerThread = new Thread(() => __Slit.Close(ref __staticError));
+            __WorkerThread = new Thread(() => __Slit.Close(ref __staticError));            
             __WorkerThread.IsBackground = true;
             __WorkerThread.Start();
 
@@ -417,7 +437,7 @@ namespace AutoBLv2.SRV
             //~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-            __WorkerThread = new Thread(() => __Slit.Open(ref __staticError));
+            __WorkerThread = new Thread(() => __Slit.Open(ref __staticError));            
             __WorkerThread.IsBackground = true;
             __WorkerThread.Start();
 
@@ -490,7 +510,7 @@ namespace AutoBLv2.SRV
             //~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-            __WorkerThread = new Thread(() => CollectOffsetBlocking((Shutter)__Slit, nSamples, out xasOffsets, ref __staticError));
+            __WorkerThread = new Thread(() => CollectOffsetBlocking(__Slit, nSamples, out xasOffsets, ref __staticError));
             __WorkerThread.IsBackground = true;
             __WorkerThread.Start();
 
@@ -535,7 +555,7 @@ namespace AutoBLv2.SRV
 
 
 
-        private Int32 AutoGainBlocking(List<Int32> _amplifiers, List<double> _energies, ref string _error)
+        private Int32 AutoGainBlocking(List<Int32> _amplifiers, List<double> _energies, bool _returnToStart, ref string _error, SampleShutter? _sampleShutter = null)
         {
             Int32 rt;
             
@@ -543,13 +563,11 @@ namespace AutoBLv2.SRV
             Int32[] sensId;
             List<Int32[]> sensIdList;
             double achievedEnergy;
-
-
+            double initialEnergy = 0;
 
             _amplifiers.Sort();
             _energies.Sort();
 
-            
 
             selectedAmplifiers = new SRS570[_amplifiers.Count];
             for (Int32 i = 0; i < _amplifiers.Count; i++)
@@ -558,83 +576,127 @@ namespace AutoBLv2.SRV
             }
 
 
+            rt = __FpgaMono.GetEnergy(ref initialEnergy, ref _error);
+            if (rt != FpgaMonochromator.SUCCESS)
+            {
+                _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + _error;
+                return ERROR;
+            }
+
 
             if (_energies.Count == 0)
             {
+
+                //##################
+                if (_sampleShutter != null) _sampleShutter.Open(ref _error);
+                //##################
+
                 rt = __AutoGain.FindMaxGain(ref selectedAmplifiers, out sensId, ref _error);
                 if (rt != AutoGain.SUCCESS)
                 {
                     _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + _error;
                     return ERROR;
                 }
-                return SUCCESS;
+
+                //##################                
+                if (_sampleShutter != null) _sampleShutter.Close(ref _error);
+                //##################
+            }
+            else
+            {
+                sensIdList = new List<int[]>();
+                for (Int32 i = 0; i < _energies.Count; i++)
+                {
+                    rt = __FpgaMono.MoveToEnergyBlocking(_energies[i], out achievedEnergy, 0, 0, ref _error);
+                    if (rt != FpgaMonochromator.SUCCESS)
+                    {
+                        _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + _error;
+                        return ERROR;
+                    }
+
+
+                    //##################                    
+                    if (_sampleShutter != null) _sampleShutter.Open(ref _error);
+                    //##################
+
+                    rt = __AutoGain.FindMaxGain(ref selectedAmplifiers, out sensId, ref _error);
+                    if (rt != AutoGain.SUCCESS)
+                    {
+                        _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + _error;
+                        return ERROR;
+                    }
+
+                    //##################                    
+                    if (_sampleShutter != null) _sampleShutter.Close(ref _error);
+                    //##################
+
+                    sensIdList.Add(sensId);
+                }
+
+                // find the min gain across all energies            
+                sensId = new Int32[_amplifiers.Count];
+                for (Int32 amplifierChannel = 0; amplifierChannel < _amplifiers.Count; amplifierChannel++)
+                {
+                    sensId[amplifierChannel] = sensIdList[0][amplifierChannel];
+                }
+                for (Int32 i = 1; i < sensIdList.Count; i++)
+                {
+                    for (Int32 amplifierChannel = 0; amplifierChannel < _amplifiers.Count; amplifierChannel++)
+                    {
+
+                        if (sensIdList[i][amplifierChannel] > sensId[amplifierChannel])
+                            sensId[amplifierChannel] = sensIdList[i][amplifierChannel];
+                    }
+                }
+
+
+                // set amplifier gain
+                for (Int32 amplifierChannel = 0; amplifierChannel < _amplifiers.Count; amplifierChannel++)
+                {
+                    rt = selectedAmplifiers[amplifierChannel].SetGain(sensId[amplifierChannel], ref _error);
+                    if (rt != SRS570.SUCCESS)
+                    {
+                        _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + _error;
+                        return ERROR;
+                    }
+                }
             }
 
-
-            sensIdList = new List<int[]>();
-
-            for (Int32 i = 0; i < _energies.Count; i++)
+            if (_returnToStart)
             {
-                rt = __FpgaMono.MoveToEnergyBlocking(_energies[i], out achievedEnergy, 0, 0, ref _error );
+                //~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+                lock (__taskLock)
+                {
+                    __currentTask = $"AUTO_GAIN_RETURN_TO_START";
+                }
+                //~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+                rt = __FpgaMono.MoveToEnergyBlocking(initialEnergy, out achievedEnergy, 0, 0, ref _error);
                 if (rt != FpgaMonochromator.SUCCESS)
                 {
                     _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + _error;
                     return ERROR;
                 }
-
-                rt = __AutoGain.FindMaxGain(ref selectedAmplifiers, out sensId, ref _error);
-                if (rt != AutoGain.SUCCESS)
-                {
-                    _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + _error;
-                    return ERROR;
-                }
-
-                sensIdList.Add(sensId);
             }
-
-
-            // find the min gain across all energies            
-            sensId = new Int32[_amplifiers.Count];
-            for (Int32 amplifierChannel = 0; amplifierChannel < _amplifiers.Count; amplifierChannel++)
-            {
-                sensId[amplifierChannel] = sensIdList[0][amplifierChannel];
-            }
-            for (Int32 i = 1; i < sensIdList.Count; i++)
-            {
-                for (Int32 amplifierChannel = 0; amplifierChannel < _amplifiers.Count; amplifierChannel++)
-                {
-
-                    if (sensIdList[i][amplifierChannel] > sensId[amplifierChannel])
-                        sensId[amplifierChannel] = sensIdList[i][amplifierChannel];
-                }
-            }
-
-
-            // set amplifier gain
-            for (Int32 amplifierChannel = 0; amplifierChannel < _amplifiers.Count; amplifierChannel++)
-            {
-                rt = selectedAmplifiers[amplifierChannel].SetGain(sensId[amplifierChannel], ref _error);
-                if (rt != SRS570.SUCCESS)
-                {
-                    _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name + _error;
-                    return ERROR;
-                }
-            }
-
-
-
-
 
             return SUCCESS;
         }
 
 
-        private Int32 CollectOffsetBlocking(Shutter _beamShutter, Int32 nSamples, out XasOffsets _xasOffsets, ref string _error)
+        private Int32 CollectOffsetBlocking(Shutter _shutter, Int32 nSamples, out XasOffsets _xasOffsets, ref string _error)
         {
             Int32 rt;
             Int32 nSamplesTmp;
             double[] aiAverage;
             double[] aiStdDev;
+
+
+            //~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            lock (__taskLock)
+            {
+                __currentTask = $"COLLECT_OFFSETS";
+            }
+            //~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
             _xasOffsets = new XasOffsets(8, 0);
@@ -654,7 +716,7 @@ namespace AutoBLv2.SRV
 
 
 
-            rt = _beamShutter.Close(ref _error);
+            rt = _shutter.Close(ref _error);
             if (rt != Shutter.SUCCESS)
             {
                 _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + _error;
@@ -674,7 +736,7 @@ namespace AutoBLv2.SRV
             __fpgaDaq.nSamples = nSamplesTmp;
 
 
-            rt = _beamShutter.Open(ref _error);
+            rt = _shutter.Open(ref _error);
             if (rt != Shutter.SUCCESS)
             {
                 _error = this.GetType().Name + " " + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + _error;
