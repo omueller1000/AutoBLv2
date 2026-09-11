@@ -30,8 +30,8 @@ namespace AutoBLv2.SRV
         private Int32 REQUEST_LENGTH_AUTO_GAIN_MIN = 7;
         private Int32 REQUEST_LENGTH_AUTO_GAIN_MAX = 15;
         private Int32 OFFSET_AUTO_GAIN_EXECUTE = 2;
-        private Int32 OFFSET_AUTO_GAIN_COLLECT_OFFSETS = 3;
-        private Int32 OFFSET_AUTO_GAIN_USE_SAMPLE_SHUTTER = 4;
+        private Int32 OFFSET_AUTO_GAIN_USE_SAMPLE_SHUTTER = 3;
+        private Int32 OFFSET_AUTO_GAIN_COLLECT_OFFSETS = 4;        
         private Int32 OFFSET_AUTO_GAIN_RETURN = 5;
         //-----------------------------------------------------------
         private Int32 MAX_AMPLIFIER_INDEX = 4;  // beamline specific
@@ -315,7 +315,17 @@ namespace AutoBLv2.SRV
                     _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name;
                     _error += " TOO_MANY_AMPLIFIERS";
                     return ERROR;
-                }                
+                }
+
+
+
+                if (useSampleShutter && __sampleShutter == null)
+                {
+                    _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name;
+                    _error = " SAMPLE_SHUTTER_NOT_AVAIALABLE";
+                    return ERROR;
+                }
+
 
                 for (Int32 i = 0; i < ampliferIndexList.Count; i++)
                 {
@@ -412,11 +422,6 @@ namespace AutoBLv2.SRV
             __MonitorThread = new Thread(() => MonitorThread(ref __WorkerThread, ""));
             __MonitorThread.IsBackground = true;
             __MonitorThread.Start();
-
-
-
-
-
 
 
             return SUCCESS;
@@ -680,16 +685,6 @@ namespace AutoBLv2.SRV
             List<Int32[]> sensIdList;
             double achievedEnergy;
             double initialEnergy = 0;
-
-
-
-            if (_useSampleShutter && _sampleShutter == null)
-            {
-                _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name;
-                _error = " SAMPLE_SHUTTER_NOT_AVAIALABLE";
-                return ERROR;
-            }
-
 
 
             _amplifiers.Sort();
