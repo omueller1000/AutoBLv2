@@ -27,11 +27,12 @@ namespace AutoBLv2.SRV
         private Int32 OFFSET_COLLECT_OFFSETS_EXECUTE = 2;
         private Int32 OFFSET_COLLECT_OFFSETS_NUM_SAMPLES = 3;
         //-----------------------------------------------------------        
-        private Int32 REQUEST_LENGTH_AUTO_GAIN_MIN = 6;
-        private Int32 REQUEST_LENGTH_AUTO_GAIN_MAX = 14;
+        private Int32 REQUEST_LENGTH_AUTO_GAIN_MIN = 7;
+        private Int32 REQUEST_LENGTH_AUTO_GAIN_MAX = 15;
         private Int32 OFFSET_AUTO_GAIN_EXECUTE = 2;
         private Int32 OFFSET_AUTO_GAIN_COLLECT_OFFSETS = 3;
-        private Int32 OFFSET_AUTO_GAIN_RETURN = 4;
+        private Int32 OFFSET_AUTO_GAIN_USE_SAMPLE_SHUTTER = 4;
+        private Int32 OFFSET_AUTO_GAIN_RETURN = 5;
         //-----------------------------------------------------------
         private Int32 MAX_AMPLIFIER_INDEX = 4;  // beamline specific
         private Int32 MAX_AMPLIFIER_COUNT = 6;
@@ -249,6 +250,7 @@ namespace AutoBLv2.SRV
             Int32 rt;
             bool validateOnly = true;
             bool collectOffsets = false;
+            bool useSampleShutter = false;
             bool returnToStart = false;            
             List<double> energyList;
             List<Int32> ampliferIndexList;
@@ -274,7 +276,8 @@ namespace AutoBLv2.SRV
             // parse aguments
             try
             {
-                validateOnly = Int32.Parse(_reqArr[OFFSET_AUTO_GAIN_EXECUTE]) == 0 ? true : false;
+                validateOnly = Int32.Parse(_reqArr[OFFSET_AUTO_GAIN_EXECUTE]) == 0 ? true : false;                
+                useSampleShutter = Int32.Parse(_reqArr[OFFSET_AUTO_GAIN_USE_SAMPLE_SHUTTER]) == 0 ? false : true;
                 collectOffsets = Int32.Parse(_reqArr[OFFSET_AUTO_GAIN_COLLECT_OFFSETS]) == 0 ? false : true;
                 returnToStart = Int32.Parse(_reqArr[OFFSET_AUTO_GAIN_RETURN]) == 0 ? false : true;
 
@@ -398,7 +401,7 @@ namespace AutoBLv2.SRV
 
             __WorkerThread = new Thread(() =>
             {
-                AutoGainBlocking(ampliferIndexList, energyList, returnToStart, ref __staticError, __sampleShutter);
+                AutoGainBlocking(ampliferIndexList, energyList, useSampleShutter, returnToStart, ref __staticError, __sampleShutter);
                 
                 if(collectOffsets)
                     CollectOffsetBlocking(__Slit, 1000, out xasOffsets, ref __staticError);
@@ -668,7 +671,7 @@ namespace AutoBLv2.SRV
 
 
 
-        private Int32 AutoGainBlocking(List<Int32> _amplifiers, List<double> _energies, bool _returnToStart, ref string _error, SampleShutter? _sampleShutter = null)
+        private Int32 AutoGainBlocking(List<Int32> _amplifiers, List<double> _energies, bool _useSampleShutter, bool _returnToStart, ref string _error, SampleShutter? _sampleShutter = null)
         {
             Int32 rt;
             
@@ -678,9 +681,19 @@ namespace AutoBLv2.SRV
             double achievedEnergy;
             double initialEnergy = 0;
 
+
+
+            if (_useSampleShutter && _sampleShutter == null)
+            {
+                _error = this.GetType().Name + "." + System.Reflection.MethodBase.GetCurrentMethod().Name;
+                _error = " SAMPLE_SHUTTER_NOT_AVAIALABLE";
+                return ERROR;
+            }
+
+
+
             _amplifiers.Sort();
             _energies.Sort();
-
 
             selectedAmplifiers = new SRS570[_amplifiers.Count];
             for (Int32 i = 0; i < _amplifiers.Count; i++)
@@ -701,7 +714,7 @@ namespace AutoBLv2.SRV
             {
 
                 //##################
-                if (_sampleShutter != null) _sampleShutter.Open(ref _error);
+                if (_useSampleShutter && _sampleShutter != null) _sampleShutter.Open(ref _error);
                 //##################
 
                 rt = __AutoGain.FindMaxGain(ref selectedAmplifiers, out sensId, ref _error);
@@ -712,7 +725,7 @@ namespace AutoBLv2.SRV
                 }
 
                 //##################                
-                if (_sampleShutter != null) _sampleShutter.Close(ref _error);
+                if (_useSampleShutter && _sampleShutter != null) _sampleShutter.Close(ref _error);
                 //##################
             }
             else
@@ -729,7 +742,7 @@ namespace AutoBLv2.SRV
 
 
                     //##################                    
-                    if (_sampleShutter != null) _sampleShutter.Open(ref _error);
+                    if (_useSampleShutter && _sampleShutter != null) _sampleShutter.Open(ref _error);
                     //##################
 
                     rt = __AutoGain.FindMaxGain(ref selectedAmplifiers, out sensId, ref _error);
@@ -740,7 +753,7 @@ namespace AutoBLv2.SRV
                     }
 
                     //##################                    
-                    if (_sampleShutter != null) _sampleShutter.Close(ref _error);
+                    if (_useSampleShutter && _sampleShutter != null) _sampleShutter.Close(ref _error);
                     //##################
 
                     sensIdList.Add(sensId);
@@ -794,8 +807,6 @@ namespace AutoBLv2.SRV
 
             return SUCCESS;
         }
-
-
         private Int32 CollectOffsetBlocking(Shutter _shutter, Int32 nSamples, out XasOffsets _xasOffsets, ref string _error)
         {
             Int32 rt;
